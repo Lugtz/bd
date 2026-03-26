@@ -1,30 +1,46 @@
-from fastapi import FastAPI, Depends, Query
+from fastapi import FastAPI, Depends, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from database import engine, SessionLocal
 import models
 import schemas
-from pydantic import BaseModel
+import joblib
+import re
+import unicodedata
 
-# 1. Crea las tablas en Somee si no existen
+# 1. Creación de tablas en Somee
 models.Base.metadata.create_all(bind=engine)
-
-# 2. Inicializa la aplicación (¡Esto es lo que faltaba en la línea 3!)
 app = FastAPI(
-    title="API Clínica - Parcial III (Con IA)",
-    description="Backend conectado a SQL Server en Somee con módulo predictivo"
+    title="API Clínica Inteligente - Triage ML",
+    description="Sistema experto con Machine Learning y SQL Server Relacional"
 )
 
-# 3. Permisos para que Angular se pueda conectar (CORS)
+# 2. CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:4200"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 4. Conexión a la Base de Datos
+# 3. Carga del Modelo de IA
+try:
+    modelo_ia = joblib.load("modelo_triage.pkl")
+    print("✅ Inteligencia Artificial cargada y lista.")
+except Exception as e:
+    print(f"❌ Error al cargar el modelo .pkl: {e}")
+    modelo_ia = None
+
+# 4. Normalización de Texto (NLP)
+def limpiar_texto(texto):
+    if not isinstance(texto, str): return ""
+    texto = texto.lower()
+    texto = ''.join(c for c in unicodedata.normalize('NFD', texto) if unicodedata.category(c) != 'Mn')
+    texto = re.sub(r'[^a-z\s]', '', texto)
+    return re.sub(r'\s+', ' ', texto).strip()
+
+# 5. Dependencia de DB
 def get_db():
     db = SessionLocal()
     try:
@@ -32,24 +48,43 @@ def get_db():
     finally:
         db.close()
 
-# --- MODELO RÁPIDO PARA CITAS ---
-class CitaRecepcion(BaseModel):
-    id_medico: int
-    id_paciente_firebase: str
-    fecha_hora: str
-    motivo: str
-    diagnostico: str
-    estado: str
-
-# ==========================================
-#              ENDPOINTS (RUTAS)
-# ==========================================
+#ENDPOINTS
 
 @app.get("/")
-def prueba_conexion():
-    return {"mensaje": "¡Hola! Tu API REST está viva y conectada 🚀", "estado": 200}
+def estado_api():
+    return {
+        "mensaje": "API Clínica Viva 🚀",
+        "ia_status": "Online" if modelo_ia else "Offline"
+    }
 
-# --- MÉDICOS ---
+# IA: PREDICCIÓN Y TRIAGE
+@app.get("/ia/analizar-sintomas/")
+def analizar_sintomas(motivo: str = Query(..., description="Síntomas del paciente"), db: Session = Depends(get_db)):
+    if not modelo_ia:
+        raise HTTPException(status_code=500, detail="Modelo de IA no cargado.")
+
+    texto_procesado = limpiar_texto(motivo)
+    resultado = modelo_ia.predict([texto_procesado])[0]
+    especialidad, riesgo = resultado.split("|")
+
+    # Usamos ilike o strip para que la búsqueda sea más flexible con la BD
+    especialistas = db.query(models.Medico).filter(
+        models.Medico.especialidad == especialidad
+    ).all()
+
+    return {
+        "prediccion": {
+            "especialidad_sugerida": especialidad,
+            "urgencia": riesgo
+        },
+        "disponibilidad": {
+            "total_medicos": len(especialistas),
+            "medicos": [f"{m.nombre} {m.apellidos}" for m in especialistas]
+        },
+        "fuente": "Criterios Oficiales OMS / Manchester Triage"
+    }
+
+# MÉDICOS
 @app.post("/medicos/", response_model=schemas.MedicoResponse)
 def crear_medico(medico: schemas.MedicoCreate, db: Session = Depends(get_db)):
     nuevo_medico = models.Medico(**medico.model_dump())
@@ -59,69 +94,35 @@ def crear_medico(medico: schemas.MedicoCreate, db: Session = Depends(get_db)):
     return nuevo_medico
 
 @app.get("/medicos/", response_model=list[schemas.MedicoResponse])
-def obtener_medicos(db: Session = Depends(get_db)):
-    medicos = db.query(models.Medico).all()
-    return medicos
+def listar_medicos(db: Session = Depends(get_db)):
+    return db.query(models.Medico).all()
 
-# --- CITAS (Requisito de la tarea) ---
-@app.post("/citas/")
-def crear_cita(cita: CitaRecepcion, db: Session = Depends(get_db)):
-    # Guardamos la cita en Somee
+@app.get("/medicos/{id_medico}", response_model=schemas.MedicoResponse)
+def obtener_medico_por_id(id_medico: int, db: Session = Depends(get_db)):
+    medico = db.query(models.Medico).filter(models.Medico.id_medico == id_medico).first()
+    if not medico:
+        raise HTTPException(status_code=404, detail="Médico no encontrado")
+    return medico
+
+#CITAS
+@app.post("/citas/", response_model=schemas.CitaResponse)
+def registrar_cita(cita: schemas.CitaCreate, db: Session = Depends(get_db)):
     nueva_cita = models.Cita(**cita.model_dump())
     db.add(nueva_cita)
     db.commit()
     db.refresh(nueva_cita)
     return nueva_cita
 
-@app.get("/citas/")
-def obtener_citas(db: Session = Depends(get_db)):
-    # Esto va a Somee, lee la tabla Citas y devuelve toda la lista
-    citas = db.query(models.Cita).all()
-    return citas
-# --- INTELIGENCIA ARTIFICIAL 
-@app.get("/ia/prediccion-personal/")
-def predecir_personal(
-    virus: str = Query(..., description="Texto del diagnóstico"),
-    pacientes_actuales: int = Query(..., description="Cantidad de pacientes"),
-    db: Session = Depends(get_db)
-):
-    texto = virus.lower()
-    
-    # NLP Básico Mejorado: Diccionario de palabras clave por gravedad
-    urgencia_roja = ["covid", "infarto", "dengue", "hemorragia", "pecho", "inconsciente", "grave"]
-    urgencia_amarilla = ["fiebre", "fractura", "dolor agudo", "corte", "infección", "influenza"]
-    
-    # Valores por defecto (Caso Verde)
-    riesgo = "BAJO (Verde)"
-    medicos_necesarios = 1
-    mensaje = "Paciente de rutina. Personal actual en clínica es suficiente."
+@app.get("/citas/", response_model=list[schemas.CitaResponse])
+def listar_citas(db: Session = Depends(get_db)):
+    return db.query(models.Cita).all()
 
-    # Lógica de clasificación (Triage)
-    if any(palabra in texto for palabra in urgencia_roja):
-        riesgo = "ALTO (Rojo)"
-        medicos_necesarios = 3
-        mensaje = "⚠️ EMERGENCIA: Requiere atención inmediata y posible aislamiento."
-    elif any(palabra in texto for palabra in urgencia_amarilla):
-        riesgo = "MEDIO (Amarillo)"
-        medicos_necesarios = 2
-        mensaje = "⚡ URGENCIA: Pasar a valoración en los próximos 30 minutos."
+@app.get("/citas/paciente/{id_firebase}", response_model=list[schemas.CitaResponse])
+def obtener_citas_paciente(id_firebase: str, db: Session = Depends(get_db)):
+    return db.query(models.Cita).filter(models.Cita.id_paciente_firebase == id_firebase).all()
 
-    # Contamos cuántos médicos hay realmente en Somee
-    medicos_actuales = db.query(models.Medico).count()
-    deficit = max(0, medicos_necesarios - medicos_actuales)
-    
-    # Si la IA detecta que faltan doctores para la emergencia, lo advierte
-    if deficit > 0:
-        mensaje += f" ALERTA ADMINISTRATIVA: Faltan {deficit} médicos en turno para cubrir la demanda."
-
-    return {
-        "analisis_ia": {
-            "riesgo_epidemia": riesgo,
-            "diagnostico_analizado": virus
-        },
-        "recomendacion": {
-            "medicos_sugeridos": medicos_necesarios,
-            "medicos_en_nomina": medicos_actuales,
-            "mensaje": mensaje
-        }
-    }
+@app.get("/citas/especialidad/{especialidad}")
+def obtener_citas_por_especialidad(especialidad: str, db: Session = Depends(get_db)):
+    return db.query(models.Cita).join(models.Medico).filter(
+        models.Medico.especialidad == especialidad
+    ).all()

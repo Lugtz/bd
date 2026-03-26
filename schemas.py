@@ -11,13 +11,13 @@ class MedicoBase(BaseModel):
     telefono: Optional[str] = None
 
 class MedicoCreate(MedicoBase):
-    pass # Se usa cuando Angular nos manda datos para CREAR un médico
+    pass 
 
 class MedicoResponse(MedicoBase):
     id_medico: int
 
     class Config:
-        from_attributes = True # Permite que Pydantic lea los modelos de SQLAlchemy
+        from_attributes = True 
 
 # --- Esquemas para Cita ---
 class CitaBase(BaseModel):
@@ -26,14 +26,17 @@ class CitaBase(BaseModel):
     fecha_hora: datetime
     motivo: str
     estado: Optional[str] = 'Pendiente'
-    diagnostico: Optional[str] = None
 
 class CitaCreate(CitaBase):
-    pass
+    # Añadimos estos campos como opcionales para que 
+    # la API pueda llenarlos con los resultados de la IA
+    diagnostico_ia: Optional[str] = None
+    nivel_urgencia: Optional[str] = None
 
 class CitaResponse(CitaBase):
     id_cita: int
+    diagnostico_ia: Optional[str] = None
+    nivel_urgencia: Optional[str] = None
 
     class Config:
         from_attributes = True
-        
