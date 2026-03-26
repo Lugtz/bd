@@ -4,17 +4,21 @@ from sqlalchemy.orm import Session
 from database import engine, SessionLocal
 import models, schemas, joblib
 
-# Crear tablas en Somee
-models.Base.metadata.create_all(bind=engine)
+# Intentamos conectar a SQL Server al arrancar
+try:
+    models.Base.metadata.create_all(bind=engine)
+    print("✅ Tablas sincronizadas con Somee")
+except Exception as e:
+    print(f"⚠️ Advertencia SQL: {e}")
 
-app = FastAPI(title="API Clínica Inteligente")
+app = FastAPI()
 
-# Configuración de CORS
+# --- ESTO ES LO QUE QUITA LAS LETRAS ROJAS DE TU CONSOLA ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"], # Permite que tu Localhost entre
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["*"], 
     allow_headers=["*"],
 )
 
@@ -22,8 +26,7 @@ app.add_middleware(
 try:
     modelo_ia = joblib.load("modelo_triage.pkl")
     print("✅ IA Lista")
-except Exception as e:
-    print(f"❌ Error al cargar modelo: {e}")
+except:
     modelo_ia = None
 
 def get_db():
@@ -33,18 +36,22 @@ def get_db():
     finally:
         db.close()
 
-# --- ENDPOINTS ---
+# --- RUTAS CON SLASH FINAL ---
 
 @app.get("/ia/analizar-sintomas/")
 def analizar_sintomas(motivo: str = Query(...)):
     if not modelo_ia: raise HTTPException(status_code=500, detail="IA Offline")
-    resultado = modelo_ia.predict([motivo.lower().strip()])[0]
-    esp, ries = resultado.split("|")
+    res = modelo_ia.predict([motivo.lower().strip()])[0]
+    esp, ries = res.split("|")
     return {"prediccion": {"especialidad_sugerida": esp, "urgencia": ries}}
 
 @app.get("/medicos/", response_model=list[schemas.MedicoResponse])
 def listar_medicos(db: Session = Depends(get_db)):
     return db.query(models.Medico).all()
+
+@app.get("/citas/", response_model=list[schemas.CitaResponse])
+def listar_citas(db: Session = Depends(get_db)):
+    return db.query(models.Cita).all()
 
 @app.post("/citas/", response_model=schemas.CitaResponse)
 def registrar_cita(cita: schemas.CitaCreate, db: Session = Depends(get_db)):

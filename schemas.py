@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from typing import List, Optional
 
 # Esquemas para MÉDICOS
 class MedicoBase(BaseModel):
@@ -7,9 +8,6 @@ class MedicoBase(BaseModel):
     especialidad: str
     cedula: str
     telefono: str
-
-class MedicoCreate(MedicoBase):
-    pass
 
 class MedicoResponse(MedicoBase):
     id_medico: int
