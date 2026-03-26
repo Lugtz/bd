@@ -1,8 +1,7 @@
-fastapi==0.115.5
-uvicorn==0.30.6
-SQLAlchemy==2.0.48
-pymssql==2.3.13
-pydantic==2.9.2
-pandas==2.2.3
+fastapi
+uvicorn
+sqlalchemy
+pymssql
+pandas
 scikit-learn==1.6.1
-joblib==1.4.2
+joblib
