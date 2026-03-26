@@ -2,14 +2,14 @@ from fastapi import FastAPI, Depends, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from database import engine, SessionLocal
-import models, schemas, joblib, re, unicodedata
+import models, schemas, joblib
 
-# Sincronización con Somee
+# Crear tablas en Somee
 models.Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="API Clínica - Triage")
+app = FastAPI(title="API Clínica Inteligente")
 
-# CONFIGURACIÓN DE CORS (Para que localhost:4200 pueda conectar)
+# Configuración de CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -22,7 +22,8 @@ app.add_middleware(
 try:
     modelo_ia = joblib.load("modelo_triage.pkl")
     print("✅ IA Lista")
-except:
+except Exception as e:
+    print(f"❌ Error al cargar modelo: {e}")
     modelo_ia = None
 
 def get_db():
@@ -32,13 +33,12 @@ def get_db():
     finally:
         db.close()
 
-# --- ENDPOINTS CON SLASH FINAL (Importante para Angular) ---
+# --- ENDPOINTS ---
 
 @app.get("/ia/analizar-sintomas/")
 def analizar_sintomas(motivo: str = Query(...)):
     if not modelo_ia: raise HTTPException(status_code=500, detail="IA Offline")
-    texto = motivo.lower().strip()
-    resultado = modelo_ia.predict([texto])[0]
+    resultado = modelo_ia.predict([motivo.lower().strip()])[0]
     esp, ries = resultado.split("|")
     return {"prediccion": {"especialidad_sugerida": esp, "urgencia": ries}}
 
