@@ -13,9 +13,14 @@ SQLALCHEMY_DATABASE_URL = f"mssql+pymssql://{USERNAME}:{PASSWORD}@{SERVER}/{DATA
 
 # 3. Encendemos el motor
 try:
-    engine = create_engine(SQLALCHEMY_DATABASE_URL)
+    engine = create_engine(
+        SQLALCHEMY_DATABASE_URL, 
+        pool_pre_ping=True,  
+        pool_recycle=3600   
+    )
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     Base = declarative_base()
-    print(":P Conexión preparada para SQL Server en Somee (Compatible con Render/Linux)")
+    print(" Conexión optimizada para Somee (Pre-ping activado)")
 except Exception as e:
     print(f" Error al configurar la conexión: {e}")
+    
