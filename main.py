@@ -15,7 +15,10 @@ app = FastAPI()
 # 2. CORS para Angular
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:4200", 
+        "https://bd-qbx0.onrender.com"
+    ], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
