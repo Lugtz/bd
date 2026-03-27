@@ -22,6 +22,8 @@ class CitaBase(BaseModel):
     motivo: str
     diagnostico_ia: str
     nivel_urgencia: str
+    estado: str      
+    diagnostico: str
 
 class CitaCreate(CitaBase):
     pass

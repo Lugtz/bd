@@ -26,6 +26,8 @@ class Cita(Base):
     fecha_hora = Column(DateTime, nullable=False)
     motivo = Column(String(255), nullable=False)
     estado = Column(String(20), default='Pendiente')
+    estado = Column(String(50))  
+    diagnostico = Column(String(500))
 
     medico = relationship("Medico", back_populates="citas")
     diagnostico = Column(String(500), nullable=True)
