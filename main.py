@@ -16,8 +16,8 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:4200", 
-        "https://bd-qbx0.onrender.com"
+        "https://bd-qbx0.onrender.com",
+        "https://gestion-pacientes-e0906.web.app"
     ], 
     allow_credentials=True,
     allow_methods=["*"],
